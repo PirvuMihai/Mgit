@@ -10,6 +10,9 @@ import (
 	"sync"
 )
 
+// Maybe: mgit all status --summary -> summary of all directories locally
+// Maybe: execute in specific directories from the multiplexer
+
 var userConfigDir, err = os.UserConfigDir()
 var configPath = filepath.Join(userConfigDir, "mgit", "mgit_config.json")
 var msg string = `
@@ -18,6 +21,24 @@ mgit help                       -> see this message
 mgit alias "repo_name" "alias"  -> take the name of a directory and give it an alias for ease of use
 mgit git_repo/alias git_command -> run git command in the desired directory
 `
+
+func resolveAbsolutePath(path string, aliases map[string]string) string {
+	if path, ok := aliases[path]; ok {
+		return path
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		panic(err)
+	}
+
+	fileInfo, err := os.Stat(absPath)
+	if err != nil || !fileInfo.IsDir() {
+		fmt.Printf("%s is not a valid directory.\n", path)
+		os.Exit(1)
+	}
+
+	return absPath
+}
 
 func runGitCommand(path string, args []string, wg *sync.WaitGroup) {
 	defer wg.Done()
@@ -31,29 +52,27 @@ func runGitCommand(path string, args []string, wg *sync.WaitGroup) {
 	fmt.Print(string(output))
 
 	if err != nil {
-		panic(err)
+		fmt.Println("Git command failed in repository", path)
+		fmt.Println(err)
 	}
 }
 
 func checkValidDir(path string) bool {
-	fileInfo, err := os.Stat(path)
-	if err != nil {
-		panic(err)
-	}
-	if fileInfo.IsDir() {
-		fileInfo, err = os.Stat(filepath.Join(path, ".git"))
-		if err != nil {
-			// does not exist
-			return false
-		}
-		return true
-	}
-	return false
+	cmd := exec.Command(
+		"git",
+		"-C", path,
+		"rev-parse",
+		"--is-inside-work-tree",
+	)
+
+	output, err := cmd.Output()
+
+	return err == nil && strings.TrimSpace(string(output)) == "true"
 }
 
 func saveAliases(aliases map[string]string) {
 	a, _ := json.Marshal(aliases)
-	os.WriteFile(configPath, a, os.FileMode(os.O_TRUNC))
+	os.WriteFile(configPath, a, 0644)
 }
 
 func main() {
@@ -72,7 +91,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	var aliases map[string]string
+
+	aliases := make(map[string]string)
 	data, err := os.ReadFile(configPath)
 	err = json.Unmarshal(data, &aliases)
 
@@ -87,6 +107,10 @@ func main() {
 	}
 
 	// Parse CLI
+	if len(os.Args) < 2 {
+		fmt.Println(msg)
+		return
+	}
 	var s string = os.Args[1]
 
 	if s == "help" {
@@ -96,10 +120,21 @@ func main() {
 			fmt.Println("\nToo many arguments given.\n", msg)
 			return
 		}
-		for i := 2; i < len(os.Args); i++ {
-			aliases[os.Args[3]] = os.Args[4]
-		}
+		aliases[os.Args[2]] = resolveAbsolutePath(os.Args[3], aliases)
 		saveAliases(aliases)
+	} else if s == "unalias" {
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: mgit unalias <alias>")
+		}
+		delete(aliases, os.Args[2])
+		saveAliases(aliases)
+	} else if s == "list" {
+		fmt.Println("\nAliases:")
+		fmt.Println("────────────────────────────────────────────")
+
+		for alias, path := range aliases {
+			fmt.Printf("%-20s %s\n", alias, path)
+		}
 	} else {
 		// treat actual git commands
 		if s == "all" {
@@ -111,14 +146,17 @@ func main() {
 			wg.Wait()
 		} else if strings.Contains(s, ",") {
 			// treat multiple repos at the same time
-			// var a []string = strings.Split(s, ",")
-			// for i : range len(a) {
-			// 	if aliases[i] != nil {
-			// 		go runGitCommand(aliases[i], os.Args[2:], &wg)
-			// 	} else {
-
-			// 	}
-			// }
+			var a []string = strings.Split(s, ",")
+			for _, v := range a {
+				wg.Add(1)
+				go runGitCommand(resolveAbsolutePath(v, aliases), os.Args[2:], &wg)
+			}
+			wg.Wait()
+		} else {
+			s = resolveAbsolutePath(s, aliases)
+			wg.Add(1)
+			go runGitCommand(s, os.Args[2:], &wg)
+			wg.Wait()
 		}
 	}
 }
