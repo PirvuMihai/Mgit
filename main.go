@@ -18,22 +18,49 @@ var aliasConfigPath = filepath.Join(userConfigDir, "mgit", "mgit_alias_config.js
 var shortcutConfigPath = filepath.Join(userConfigDir, "mgit", "mgit_shortcut_config.json")
 
 var msg string = `
-Supported commands:
+MGit — Git multiplexer & command launcher
 
-mgit help -> see this message
+USAGE
 
-Git stuff:
+mgit <repo> <git-command> [args...]
+mgit all <git-command> [args...]
+mgit <repo1,repo2,...> <git-command> [args...]
 
-mgit alias add "repo_name" "alias"  -> take the name of a directory and give it an alias for ease of use
-mgit alias list                     -> list all the aliases you have configured
-mgit git_repo/alias git_command     -> run git command in the desired directory
+Run Git commands in one or multiple repositories.
 
-Command shortcuts
+REPOSITORY ALIASES
 
-mgit shortcut add "shortcut" "full_command" -> add shortcut to command to run in specified directory
-mgit shortcut run "shortcut"                -> run the command in a new shell
-mgit shortcut remove "shortcut"             -> remove a shortcut
-mgit shortcut list                          -> list all command shortcuts
+mgit alias add <alias> <directory> -> Create an alias for a repository directory.
+mgit alias list                    -> List all repository aliases.
+mgit unalias <alias>               -> Remove a repository alias.
+
+Examples: mgit alias add backend C:\Projects\backend
+mgit backend status
+mgit backend pull
+mgit backend checkout develop
+mgit frontend,backend status
+mgit all status
+
+COMMAND SHORTCUTS
+
+mgit shortcut add <name> <command...> -> Save a command as a named shortcut.
+mgit shortcut run <name>              -> Open a new terminal and run the shortcut.
+mgit shortcut list                    -> List all command shortcuts.
+mgit shortcut remove <name>           -> Remove a command shortcut.
+
+Examples:
+
+mgit shortcut add frontend "cd C:\Projects\app\frontend && npm run dev"
+mgit shortcut add backend "cd C:\Projects\app\backend && go run ."
+
+mgit shortcut run frontend
+mgit shortcut run backend
+
+Shortcuts are executed by the operating system's shell. You can use any commands, arguments, pipes, redirects, etc.
+
+OTHER
+
+mgit help -> Show this help message.
 `
 
 func resolveAbsolutePath(path string, aliases map[string]string) string {
