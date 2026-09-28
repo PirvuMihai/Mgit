@@ -14,12 +14,21 @@ import (
 // Maybe: execute in specific directories from the multiplexer
 
 var userConfigDir, err = os.UserConfigDir()
-var configPath = filepath.Join(userConfigDir, "mgit", "mgit_config.json")
+var aliasConfigPath = filepath.Join(userConfigDir, "mgit", "mgit_alias_config.json")
+var shortcutConfigPath = filepath.Join(userConfigDir, "mgit", "mgit_shortcut_config.json")
+
 var msg string = `
 Supported commands:
-mgit help                       -> see this message
-mgit alias "repo_name" "alias"  -> take the name of a directory and give it an alias for ease of use
-mgit git_repo/alias git_command -> run git command in the desired directory
+
+mgit help                           -> see this message
+mgit alias add "repo_name" "alias"  -> take the name of a directory and give it an alias for ease of use
+mgit alias list                     -> list all the aliases you have configured
+mgit git_repo/alias git_command     -> run git command in the desired directory
+
+mgit shortcut add "full_command" "shortcut" -> add shortcut to command to run in specified directory
+mgit shortcut run "shortcut"                -> run the command in a new child process
+mgit shortcut remove "shortcut"             -> remove a shortcut
+mgit shortcut list                          -> list all command shortcuts
 `
 
 func resolveAbsolutePath(path string, aliases map[string]string) string {
@@ -72,7 +81,12 @@ func checkValidDir(path string) bool {
 
 func saveAliases(aliases map[string]string) {
 	a, _ := json.Marshal(aliases)
-	os.WriteFile(configPath, a, 0644)
+	os.WriteFile(aliasConfigPath, a, 0644)
+}
+
+func saveShortcuts(shortcuts map[string] string) {
+	a, _ := json.Marshal(shortcuts)
+	os.WriteFile(shortcutConfigPath, a, 0644)
 }
 
 func main() {
@@ -87,14 +101,22 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	_, err := os.OpenFile(configPath, os.O_CREATE|os.O_WRONLY, 0644)
+	_, err := os.OpenFile(aliasConfigPath, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		panic(err)
 	}
 
+	_, err = os.OpenFile(shortcutConfigPath, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		panic(err)
+	}
 	aliases := make(map[string]string)
-	data, err := os.ReadFile(configPath)
+	data, err := os.ReadFile(aliasConfigPath)
 	err = json.Unmarshal(data, &aliases)
+
+	shortcuts := make(map[string]string)
+	data, err = os.ReadFile(shortcutConfigPath)
+	err = json.Unmarshal(data, &shortcuts)
 
 	// index CWD
 	cwd, _ := os.Getwd()
@@ -116,24 +138,44 @@ func main() {
 	if s == "help" {
 		fmt.Println(msg)
 	} else if s == "alias" {
-		if len(os.Args) != 4 {
-			fmt.Println("\nToo many arguments given.\n", msg)
-			return
+		if os.Args[2] == "add" {
+			if len(os.Args) != 4 {
+				fmt.Println("\nToo many arguments given.\n", msg)
+				return
+			}
+			aliases[os.Args[3]] = resolveAbsolutePath(os.Args[4], aliases)
+			saveAliases(aliases)
+		} else if (os.Args[2] == "list") {
+			if len(aliases) == 0 {
+				fmt.Println("\nNo aliases added.")
+				return
+			}
+			fmt.Println("\nAliases:")
+			fmt.Println("────────────────────────────────────────────")
+
+			for alias, path := range aliases {
+				fmt.Printf("%-20s %s\n", alias, path)
+			}
 		}
-		aliases[os.Args[2]] = resolveAbsolutePath(os.Args[3], aliases)
-		saveAliases(aliases)
 	} else if s == "unalias" {
 		if len(os.Args) < 3 {
 			fmt.Println("Usage: mgit unalias <alias>")
 		}
 		delete(aliases, os.Args[2])
 		saveAliases(aliases)
-	} else if s == "list" {
-		fmt.Println("\nAliases:")
-		fmt.Println("────────────────────────────────────────────")
+	} else if s == "shortcut" {
+		s1 := os.Args[2]
+		if s1 == "add" {
 
-		for alias, path := range aliases {
-			fmt.Printf("%-20s %s\n", alias, path)
+		} else if s1 == "run" {
+
+		} else if s1 == "list" {
+
+		} else if s1 == "remove" {
+
+		} else {
+			fmt.Println(msg)
+			return
 		}
 	} else {
 		// treat actual git commands
